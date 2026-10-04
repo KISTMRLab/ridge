@@ -6,7 +6,7 @@
   "figure": 1,
   "source": "RIDGE Figure 1 and Sections 3–4",
   "alt": "RIDGE system architecture: rule-base construction, contrastive representation learning, and threshold-gated hybrid gesture retrieval",
-  "caption": "New scientific system diagram generated with image generation, based on RIDGE Figure 1 and Sections 3–4. Both inference paths retrieve recorded gesture clips. The diagram describes the paper's system; reimplementation differences are documented in REQUIREMENTS.md.",
+  "caption": "Graphical abstract diagram. Confidence-gated rules and learned similarity retrieve recorded gesture clips.",
   "generation_prompt": "generation-prompt.txt",
   "original_figure": "method.png"
 }
