@@ -36,7 +36,7 @@ def embed(texts: list[str], width: int = 384) -> np.ndarray:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--output-dir", type=Path, default=Path("outputs/smoke"))
+    parser = argparse.ArgumentParser(); parser.add_argument("--output-dir", type=Path, default=Path("outputs/verification"))
     args = parser.parse_args(); out = args.output_dir; out.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(19); rng = np.random.default_rng(19)
     texts = ["open both hands now", "point to the result", "move to the next topic", "welcome everyone today", "explain this important idea", "finish the demonstration"]
@@ -70,8 +70,8 @@ def main() -> None:
     run_cli("build-rules", "--records", out / "transcripts.jsonl", "--annotations", out / "cli-phrases.jsonl", "--sbert", out / "tiny-sbert", "--output", out / "cli-rules.jsonl")
     run_cli("train", "--pairs", out / "train_pairs.npz", "--output", out / "cli-ridge.pt", "--epochs", 1, "--batch-size", 6, "--seed", 19)
     run_cli("retrieve", "--rules", out / "cli-rules.jsonl", "--checkpoint", out / "cli-ridge.pt", "--sbert", out / "tiny-sbert", "--threshold", 0.99, "--text", "open both hands now then discuss another topic", "--output", out / "cli-sequence.json")
-    np.savez(out / "gca-reference.npz", text_embeddings=zt.numpy(), motion_embeddings=motion_latents)
-    np.savez(out / "gca-candidate.npz", text_embeddings=zt.numpy(), motion_embeddings=motion_latents)
+    np.savez(out / "gca-reference.npz", text_embeddings=zt.numpy()[:4], motion_embeddings=motion_latents[:4])
+    np.savez(out / "gca-candidate.npz", text_embeddings=zt.numpy()[4:], motion_embeddings=motion_latents[4:])
     run_cli("eval-gca", "--reference", out / "gca-reference.npz", "--candidate", out / "gca-candidate.npz", "--text-clusters", 2, "--gesture-clusters", 1)
     cli_sequence = json.loads((out / "cli-sequence.json").read_text(encoding="utf-8"))
     if not cli_sequence: raise RuntimeError("installed CLI produced no gestures")

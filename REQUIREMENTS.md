@@ -18,3 +18,7 @@
 ## Acceptance criteria
 
 Commands cover annotation, rule construction, contrastive training, hybrid retrieval, and leakage-resistant GCA. Outputs identify whether each result came from `rule` or `fallback`. No direct latent-to-motion decoder is included because the paper describes retrieval and leaves decoding to future work.
+
+## Interactive data handoff
+
+The browser queries the existing retrieval implementation and renders the selected motion frames with a pinned local Three.js module. Its immediate example mode is author-created motion plus explicitly illustrative, untrained vectors. Production mode accepts the documented public BVH/timed-transcript preparation outputs, real local encoder assets and trained checkpoints as appropriate. The preparation adapter preserves motion/transcript alignment and declares skeleton/FPS assumptions; it does not fabricate annotations or evaluation results. Speech is optional and replaceable (Kokoro-82M English/faster-whisper small CPU INT8, with browser voice/typed-input alternatives). Verification must cover clip serialization and algorithm routing, with model quality evaluation deferred to user-prepared public data.

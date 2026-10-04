@@ -56,6 +56,14 @@ Please cite the research paper when using its ideas; [download the BibTeX citati
 
 Independent educational reimplementation of *RIDGE: Rule-Infused Deep Learning for Realistic Co-Speech Gesture Generation* (Ali, Kim, and Hwang, Computer Animation and Virtual Worlds 2025, DOI: [10.1002/cav.70034](https://doi.org/10.1002/cav.70034)). RIDGE retrieves recorded clips through a high-confidence phrase rule first and a contrastively learned text-motion space otherwise. It does not decode new animation frames and is not institute source code.
 
+For an immediate browser example after installation, run `python scripts/prepare_viewer.py --out static/vendor` and `python scripts/demo_server.py --example`, then open the printed URL. Query `point to the result` at threshold `0.72` to see the fallback; lower the gate to `0` to see the rule path and its weak score. Author-created motion and illustrative vectors are labeled in the UI; the prepared-data path below trains and loads the contrastive checkpoint.
+
+```bash
+python -m pip install -e .
+python scripts/prepare_viewer.py --out static/vendor
+python scripts/demo_server.py --example
+```
+
 ### Setup and public data
 
 ```bash
@@ -66,13 +74,13 @@ python -m pip install -e . pytest
 
 On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1` instead of the `source` line.
 
-Run a CPU smoke workflow with procedurally generated inputs:
+Run a CPU verification workflow with procedurally generated inputs:
 
 ```bash
-python scripts/smoke.py
+python scripts/verify.py
 ```
 
-It generates transcripts, reviewed annotations, 384-D paired embeddings, motion, and a local SentenceTransformer fixture, then invokes the installed `annotate`, `build-rules`, `train`, `retrieve`, and `eval-gca` CLI paths. Both rule and neural fallback retrieval are exercised, with results under `outputs/smoke/`. The local encoder replaces only downloadable Sentence-BERT weights; real `all-MiniLM-L6-v2` embeddings use the same checkpoint and index path.
+It generates transcripts, reviewed annotations, 384-D paired embeddings, motion, and a local SentenceTransformer fixture, then invokes the installed `annotate`, `build-rules`, `train`, `retrieve`, and `eval-gca` CLI paths. Both rule and neural fallback retrieval are exercised, with results under `outputs/verification/`. The local encoder replaces only downloadable Sentence-BERT weights; real `all-MiniLM-L6-v2` embeddings use the same checkpoint and index path.
 
 Request [BEAT](https://pantomatrix.github.io/BEAT/) from its maintainers and prepare its text, timestamps, and upper-body motion under its license. Public videos may augment pretraining only when you have permission to process them. No BEAT files, wild videos, annotations, weights, proprietary prompts, or reported scores are bundled.
 
@@ -93,6 +101,23 @@ The annotation command uses a transparent heuristic unless reviewed annotations 
 
 GCA reference and candidate files both contain `text_embeddings` and `motion_embeddings`. The reference file must contain training/reference speakers only. The candidate file contains held-out predictions; it never participates in fitting text clusters or gesture subclusters.
 
+### Prepare data and compare retrieval branches in the browser
+
+`scripts/prepare_public_data.py` converts a licensed BVH and timestamped JSONL transcript to 15 FPS neck-centered motion, phrase records and real `all-MiniLM-L6-v2` text embeddings. Use at least six seconds and the script's upper-body joint names. One word per JSONL line or one record containing `words` is accepted; timestamps can use seconds or frame indices. The adapter does not synthesize expert/LLM phrase annotations. Review `annotate` output or supply `--external-annotations` for meaningful rules.
+
+```bash
+python scripts/prepare_public_data.py --bvh data/licensed_motion.bvh --transcript data/words.jsonl --output-dir data/prepared
+ridge-gesture annotate --transcripts data/prepared/transcripts.jsonl --output outputs/phrases.jsonl
+ridge-gesture build-rules --records data/prepared/transcripts.jsonl --annotations outputs/phrases.jsonl --output outputs/rules.jsonl
+ridge-gesture train --pairs data/prepared/train_pairs.npz --epochs 20 --output checkpoints/ridge.pt
+python scripts/prepare_viewer.py --out static/vendor
+python scripts/demo_server.py --data-dir data/prepared --rules outputs/rules.jsonl --checkpoint checkpoints/ridge.pt
+```
+
+The threshold slider changes the rule gate live. The trace labels each selected clip as `rule` or `fallback`, shows similarity and plays its actual motion frames. Use speaker-separated reference and candidate files with `ridge-gesture eval-gca` for the GCA diagnostic; the local demo does not assert the paper's reported score. The compact checkpoint freezes Sentence-BERT and trains a text projection and temporal motion encoder. `scripts/verify.py` uses random arrays plus a local illustrative text encoder solely to exercise interfaces.
+
+[Automatic text-to-gesture](https://github.com/ghazanPK/automatic-text-to-gesture) is the rule-mining precursor; [wild pose matching](https://github.com/ghazanPK/wild-pose-matching) and [multilingual gesture synthesis](https://github.com/ghazanPK/multilingual-gesture) develop the GestureCLR lineage. These are research references, not package dependencies.
+
 ### Limits and licenses
 
 This implementation freezes Sentence-BERT and trains its projection, while the paper describes end-to-end training; see `REQUIREMENTS.md`. Heuristic phrases are not equivalent to expert or LLM annotation. GCA measures affinity to a fitted cluster structure and still needs perceptual validation. Source motion quality, including finger artifacts, carries into retrieved clips. Code is MIT licensed; BEAT, pretrained encoders, videos, and annotations keep separate terms.
@@ -104,3 +129,7 @@ Machine-readable metadata is in [citation.bib](citation.bib).
 ```bibtex
 @article{ali2025ridge, title={RIDGE: Rule-Infused Deep Learning for Realistic Co-Speech Gesture Generation}, author={Ali, Ghazanfar and Kim, HwangYoun and Hwang, Jae-In}, journal={Computer Animation and Virtual Worlds}, volume={36}, number={4}, pages={e70034}, year={2025}, doi={10.1002/cav.70034}}
 ```
+
+### Optional local speech adapters
+
+The viewer can speak its query or transcribe user-selected audio. Browser voice and typed text work without model weights. Install `python -m pip install -e ".[speech]"` for local adapters. Obtain Kokoro files from [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) yourself: `config.json`, `kokoro-v1_0.pth` and `voices/af_heart.pt`. Set `KOKORO_MODEL_DIR` to their parent folder before launching the server. Follow [Kokoro's English phonemizer setup](https://github.com/hexgrad/kokoro), including espeak-ng where required, then choose Local Kokoro. For ASR, set `WHISPER_MODEL_DIR` to a user-downloaded [faster-whisper](https://github.com/SYSTRAN/faster-whisper) small model directory containing `model.bin` and its tokenizer/configuration files. ASR runs on CPU with INT8, requests word timestamps and VAD, and disables implicit model downloads. No speech model files or audio recordings are included in this repo.
