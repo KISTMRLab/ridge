@@ -1,0 +1,30 @@
+Built-in image_gen was used. Initial generation prompt:
+
+Use case: scientific-educational / infographic-diagram.
+Create an exceptionally polished publication-quality RIDGE system architecture figure for a research GitHub README and paper project page. Wide landscape canvas, high resolution, white background, crisp flat vector-like scientific graphic, excellent typography and generous whitespace. This is a scientific system diagram, not a decorative website illustration. Deep navy text, restrained teal for rule retrieval, indigo for learned retrieval, subtle light-gray section panels. Tiny elegant database cylinders and skeletal motion glyphs only where meaningful. No people portraits, cartoons, landscapes, glowing effects, 3D boxes, watermarks, invented results or unnecessary prose.
+
+Top title exactly: "RIDGE"
+Subtitle exactly: "Rule-Infused Deep Learning for Realistic Co-Speech Gesture Generation"
+
+Arrange three clearly separated numbered panels: upper half contains two equally sized offline panels side by side; lower half contains a wide online inference panel. Use precise non-crossing connectors and large readable labels.
+
+Panel 01 title: "Rule-base construction"
+Accurate flow: "Aligned text + motion" branches into "LLM-assisted phrase mining" and "Motion segmentation". Phrase mining provides timestamp spans to motion segmentation. Both then merge into a database labeled "Text–gesture rule bank". Small secondary text on phrase mining: "Salient phrases · 3–10 words". Small secondary text on database: "Sentence-BERT phrase embeddings + recorded clips". Clearly show phrases and their paired motion clips stored together.
+
+Panel 02 title: "Contrastive representation learning"
+Two compact encoders side by side: "Text encoder" with subtitle "Sentence-BERT + projection"; "Motion encoder" with subtitle "GestureCLR-based · neck-normalized". Paired text and motion inputs feed their respective encoders. Outputs align in "Shared 10D embedding space" under "Contrastive loss". Visually represent paired embeddings as a small clean cluster with matching colors, no axes or misleading metrics. Below: training strip "Wild-data pretraining → Speaker-specific fine-tuning". Then a database labeled "Latent–gesture bank" with subtitle "Motion embeddings + recorded clips". Show motion encoder creates the bank; training alignment trains encoders. Do not depict contrastive loss as a runtime decoder.
+
+Panel 03 title: "Hybrid inference"
+Make this the clearest and largest flow in the diagram.
+Left "Input text" → "Sentence-BERT" → "Rule similarity" → decision diamond "Score ≥ threshold?"
+Above the Rule similarity block place a small "Text–gesture rule bank" database with downward connector.
+YES branch in teal goes to "Retrieve rule clip".
+NO branch in indigo goes downward to "Rechunk unmatched text" (small subtitle "5–6 words") → "Learned text embedding" → "Nearest-neighbor retrieval". A "Latent–gesture bank" database feeds nearest-neighbor retrieval. Clearly each branch retrieves recorded motion, neither generates new poses.
+Both branches converge to the same output block on far right: "Selected recorded gesture" → "Animator".
+Use a tiny simple skeletal upper-body sequence at the Animator output, technical motion visualization only.
+Legend at bottom: "Offline preparation" and "Online retrieval"; fine-print line exactly "Both paths retrieve recorded motion; no direct motion decoder."
+
+Architecture invariants: Rule matching always happens FIRST. Learned retrieval executes ONLY when the similarity threshold is not met. The yes and no labels must be unambiguous. Both retrieval branches merge to one output. Rule and latent databases are distinct. Do not include GCA evaluation or numerical performance claims. Do not add nonexistent modules or make the learned branch a generative decoder. Prioritize beautiful balanced diagram layout, legible exact text, coherent arrows and scientific clarity.
+
+Refinements: removed the dangling rule-bank connector; routed motion encoding to the latent–gesture bank separately from contrastive training; removed the loss-to-training-schedule arrow; restored both encoders' training connections to the contrastive loss; corrected the example phrase to 'communicate more naturally'.
+

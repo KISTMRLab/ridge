@@ -1,0 +1,17 @@
+title: "RIDGE"
+description: "High-confidence rules and learned similarity retrieve semantically aligned gestures."
+markdown: kramdown
+kramdown:
+  input: GFM
+exclude:
+  - src
+  - tests
+  - .venv
+  - data
+  - runs
+  - outputs
+  - checkpoints
+  - pyproject.toml
+  - requirements.txt
+  - package.json
+  - package-lock.json
