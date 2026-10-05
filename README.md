@@ -55,18 +55,22 @@ Please cite the research paper when using its ideas; [download the BibTeX citati
 
 ![Ridge runnable demo](demo-assets/preview.png)
 
-*Local demo with small starter examples; the capture illustrates the interface, not a reproduced paper benchmark.*
+*The prepared BEAT sequence shows explicit strong-rule and locally fitted fallback routes. This preview is not a paper benchmark.*
 
 From the repository root, using the Python environment described below:
 
 ```sh
 python -m pip install -e .
+python -m pip install -r scripts/requirements-demo.txt
 python scripts/start_demo.py
 ```
 
-Open **http://127.0.0.1:8080/**. A starter query and motion clip load automatically. Click **Play speech + gesture** to start both together, or change the text and click **Retrieve motion**. Stop cancels speech; scrubbing previews a pose without speaking. The launcher selects the bundled inputs automatically; it also builds the small authored index for RAG demos. Avatar demos prepare their pinned Three.js modules on first launch, so that step needs internet access. Model weights and public datasets are optional for the starter workflow and are prepared separately for real-data use.
+Open **http://127.0.0.1:8080/**. First launch downloads one official BEAT BVH and matching TextGrid, prepares nine clips and disjoint paired windows in ignored `outputs/`, resolves three cached semantic annotations to strong rules, and fits a compact text-motion fallback locally. The fallback uses TF-IDF text features in place of Sentence-BERT for this small demo. Choose suggested utterances to compare strong-rule and trained fallback routes, then click **Play speech + gesture**. Stop cancels speech, and scrubbing previews a pose. The first launch also downloads pinned Three.js modules. Public recordings and fitted weights remain local.
 
 The 3D presentation uses shared Three.js avatar components and bundled fictional CC0 characters. The paper-specific algorithms and data adapters live in this repository.
+
+
+To replace the demo motion with an existing processed BEAT take, run `python scripts/prepare_beat_demo.py --processed /path/to/processed/beat`, then restart the server. Use `--rebuild --epochs 80` to regenerate the public sample and refit the small adapter. For a larger bank, the documented full-data CLI below retains the paper-specific input contracts.
 
 <!-- demo-preview:end -->
 
@@ -76,7 +80,16 @@ The 3D presentation uses shared Three.js avatar components and bundled fictional
 
 Independent educational reimplementation of *RIDGE: Rule-Infused Deep Learning for Realistic Co-Speech Gesture Generation* (Ali, Kim, and Hwang, Computer Animation and Virtual Worlds 2025, DOI: [10.1002/cav.70034](https://doi.org/10.1002/cav.70034)). RIDGE retrieves recorded clips through a high-confidence phrase rule first and a contrastively learned text-motion space otherwise. It does not decode new animation frames and is not institute source code.
 
-For an immediate browser example after installation, run `python scripts/prepare_viewer.py --out static/vendor` and `python scripts/demo_server.py --example`, then open the printed URL. Query `point to the result` at threshold `0.72` to see the fallback; lower the gate to `0` to see the rule path and its weak score. Author-created motion and illustrative vectors are labeled in the UI; the prepared-data path below trains and loads the contrastive checkpoint.
+The default browser path is the prepared BEAT demo above. The older `python scripts/demo_server.py --example` path, when the prepared BEAT cache is absent, remains an offline fixture with author-created motion and illustrative vectors. The prepared-data commands below retain the full contrastive training and hybrid retrieval contracts.
+
+The default strong rules come from three cached semantic annotations with explicit provenance. To run your own OpenAI-compatible extractor against the prepared local bank, supply an endpoint and model, then rebuild the local RIDGE index with those reviewed rules:
+
+```sh
+python scripts/beat_semantics.py --endpoint http://127.0.0.1:1234/v1 --model MODEL --output outputs/beat-library/strong-rules.json
+python scripts/prepare_beat_demo.py --strong-rules outputs/beat-library/strong-rules.json
+```
+
+The extractor copies contiguous transcript spans and checks their alignment to bank clips. It does not infer gesture meaning from motion. The demo's cached annotations were generated with an assistant and remain reviewable in `scripts/beat-semantic-annotations.json`. The full paper method follows the rule-map and pose-matching lineage of [Automatic Text-to-Gesture](https://github.com/ghazanPK/automatic-text-to-gesture) and [Wild Pose Matching](https://github.com/ghazanPK/wild-pose-matching), but this repository runs independently.
 
 ```bash
 python -m pip install -e .
@@ -102,7 +115,7 @@ python scripts/verify.py
 
 It generates transcripts, reviewed annotations, 384-D paired embeddings, motion, and a local SentenceTransformer fixture, then invokes the installed `annotate`, `build-rules`, `train`, `retrieve`, and `eval-gca` CLI paths. Both rule and neural fallback retrieval are exercised, with results under `outputs/verification/`. The local encoder replaces only downloadable Sentence-BERT weights; real `all-MiniLM-L6-v2` embeddings use the same checkpoint and index path.
 
-Request [BEAT](https://pantomatrix.github.io/BEAT/) from its maintainers and prepare its text, timestamps, and upper-body motion under its license. Public videos may augment pretraining only when you have permission to process them. No BEAT files, wild videos, annotations, weights, proprietary prompts, or reported scores are bundled.
+Request [BEAT](https://pantomatrix.github.io/BEAT/) from its maintainers and prepare its text, timestamps, and upper-body motion under its license. Public videos may augment pretraining only when you have permission to process them. No BEAT recordings, wild videos, original performer annotations, trained weights, proprietary prompts, or reported scores are bundled. The demo includes three cached semantic phrase annotations from the public transcript, with their provenance recorded.
 
 Transcript JSONL rows contain `record_id`, `text`, and `words: [{word,start_frame,end_frame}]`. Motion remains in a user-managed store keyed by the generated `record_id:start-end` gesture ID. Contrastive `pairs.npz` contains normalized `text_embeddings[N,384]`, neck-centered `motion[N,F,D]`, and string `ids[N]`. SBERT embeddings must come from `all-MiniLM-L6-v2` unless you intentionally retrain and rebuild every index.
 

@@ -10,7 +10,7 @@
 
 ## Reimplementation decisions
 
-- Phrase annotation defaults to a deterministic content-word heuristic and accepts reviewed or external-LLM JSON. No hosted LLM call or key is embedded.
+- The full CLI can use a deterministic content-word heuristic or supplied annotation JSON. The small browser demo resolves three cached, provenance-marked LLM annotations; a separate explicit endpoint command can regenerate strong rules. No hosted key is embedded.
 - Sentence-BERT embeddings are frozen during compact training; its 384D outputs feed a trainable MLP. This differs from full end-to-end fine-tuning and is explicit in checkpoint metadata.
 - The motion encoder is a compact temporal Transformer with sinusoidal frame positions rather than unpublished institute code.
 - GCA always fits on a reference/training file and scores a separate candidate/held-out file. Evaluation samples never alter centroids.
@@ -21,7 +21,7 @@ Commands cover annotation, rule construction, contrastive training, hybrid retri
 
 ## Interactive data handoff
 
-The browser queries the existing retrieval implementation and renders the selected motion frames with a pinned local Three.js module. Its immediate example mode is author-created motion plus explicitly illustrative, untrained vectors. Production mode accepts the documented public BVH/timed-transcript preparation outputs, real local encoder assets and trained checkpoints as appropriate. The preparation adapter preserves motion/transcript alignment and declares skeleton/FPS assumptions; it does not fabricate annotations or evaluation results. Speech is optional and replaceable (Kokoro-82M English/faster-whisper small CPU INT8, with browser voice/typed-input alternatives). Verification must cover clip serialization and algorithm routing, with model quality evaluation deferred to user-prepared public data.
+`scripts/start_demo.py` downloads one official BEAT BVH/TextGrid take, builds a local nine-clip bank and paired windows, resolves cached semantic spans to explicit strong rules, and locally fits a compact text-motion fallback in ignored outputs. The small demo substitutes TF-IDF features for Sentence-BERT before contrastive training; the full CLI above retains its documented encoder contract. The trace distinguishes strong-rule from fitted fallback routes. Cached annotations and a tiny fitted model are not evidence of the paper's rule extraction or retrieval quality. The older `--example` path remains an explicitly authored offline fixture. Speech is optional; recordings and fitted weights are not bundled.
 
 ## Bundled fictional avatar substitution
 
