@@ -101,6 +101,65 @@ python scripts/prepare_viewer.py --out static/vendor
 python scripts/demo_server.py --example
 ```
 
+### Reproduce with BEAT
+
+`scripts/prepare_paper_method.py` runs this repository's full per-speaker pipeline on public [BEAT](https://pantomatrix.github.io/BEAT/) motion, then serves the result in the browser viewer. One speaker is the target (`--target-speaker`, default the first selected speaker); the other selected speakers pretrain:
+
+| Data | Default | Used for |
+|---|---|---|
+| Target speaker, training takes | Speaker 1, first two takes | Timed transcripts → gesture phrases (`ridge-gesture annotate`) → Sentence-BERT strong rules over the speaker's own motion spans (`ridge-gesture build-rules`). The same takes give 3 s text–motion pairs for fine-tuning. |
+| Other speakers | Speakers 2–4, three takes each | 3 s text–motion pairs for stage-1 pretraining (`ridge-gesture train --preset pretrain`). Stage 2 fine-tunes on the target pairs (`--preset finetune --init`). `--no-pretrain` trains on the target only. |
+| Target speaker, held-out take | Last selected take | Transcripts never used for rules or training. They probe the learned fallback. |
+
+**Annotation.** By default `annotate` uses its offline content-word heuristic (`--phrases-per-record`, default 12). Two flags switch it:
+- `--external-annotations reviewed.json` supplies reviewed phrases.
+- `--llm-endpoint http://127.0.0.1:1234/v1 --model MODEL`, or `--llm-command "ollama run llama3.1"`, sends the paper's verbatim extraction prompt. With raw BEAT, the original TextGrid is the prompt content.
+
+**1. Sentence-BERT, once.** The hook never downloads a model. Save `all-MiniLM-L6-v2` locally (about 90 MB):
+
+```bash
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2').save('models/all-MiniLM-L6-v2')"
+```
+
+`--sbert DIR` or the `SBERT_MODEL` environment variable selects another local copy.
+
+**2a. Processed OmniMo collection.** The collection is laid out as `<root>/<speaker>/{meta.json,motion.npz}`:
+
+```bash
+python scripts/prepare_paper_method.py --processed /path/to/processed/beat
+python scripts/demo_server.py --prepared outputs/paper-method/<key> --port 8080
+```
+
+The last line of standard output is JSON whose `server_args` give the exact prepared folder.
+
+**2b. Raw BEAT from Hugging Face.** Download BVH and TextGrid pairs from the official dataset [`H-Liu1997/BEAT`](https://huggingface.co/datasets/H-Liu1997/BEAT) into `data/beat/beat_english_v0.2.1/<speaker>/`. Each BVH is about 20 MB:
+
+```bash
+base=https://huggingface.co/datasets/H-Liu1997/BEAT/resolve/main/beat_english_v0.2.1/beat_english_v0.2.1
+for take in 1_wayne_0_1_1 1_wayne_0_2_2 1_wayne_0_3_3 2_scott_0_1_1 2_scott_0_2_2 3_solomon_0_3_3 3_solomon_0_4_4 \
+            4_lawrence_0_2_2 4_lawrence_0_3_3; do
+  spk=${take%%_*}; mkdir -p data/beat/beat_english_v0.2.1/$spk
+  for ext in bvh TextGrid; do curl -fL -o data/beat/beat_english_v0.2.1/$spk/$take.$ext $base/$spk/$take.$ext; done
+done
+python scripts/prepare_paper_method.py --beat-root data/beat/beat_english_v0.2.1
+```
+
+**Launcher.** `python scripts/start_demo.py` runs this hook after the shared BEAT demo preparation.
+- **Source.** It looks in `--processed` or `--beat-root`, then `BEAT_PROCESSED_ROOT` or `BEAT_RAW_ROOT`, then `data/beat/processed` or `data/beat/beat_english_v0.2.1`.
+- **Missing input.** Without a source or Sentence-BERT, it prints the next step and the default demo starts unchanged.
+- **Cache.** Results are cached in ignored `outputs/paper-method/<settings hash>/`. A repeat launch with the same settings returns at once; `--force` rebuilds.
+
+**Demo scale and paper preset.**
+- **Demo (default).** Speakers 1–4, up to three takes each, at most 150 epochs per stage with the CLI's early stopping. On a CPU it takes under a minute. One local run on the processed collection gave these results:
+  - 24 heuristic strong rules for speaker 1;
+  - 228 pretraining pairs and 47 fine-tuning pairs;
+  - a held-out top-1 of 0.083 against a chance of 0.042, over 24 held-out windows. The metric asks whether a held-out transcript window retrieves its own motion window.
+- **Paper preset.** `--preset paper` uses the CLI presets: 300 epochs, early stopping, pretraining batch 1000 and fine-tuning batch 64. Combine it with `--speakers all --max-takes-per-speaker 0` and an LLM annotator for a paper-scale run. `--gesture-init` starts the motion branch from a GestureCLR checkpoint.
+
+**Viewer.** `/api/beat-library` lists the strong rules, the fallback windows, suggested queries and held-out probes, together with the metrics. The suggested queries are rule phrases plus a rule-and-probe mix. `/api/beat-query` runs `hybrid_retrieve`. Spans above the threshold slider (default 0.72) play the speaker's annotated motion with route `strong_rule`. The remaining words take `trained_text_motion_fallback`, or `idle_no_match` when an optional `min_similarity` floor is set.
+
+**Limits.** The heuristic phrases are not the paper's LLM annotation, and Sentence-BERT stays frozen. A demo-scale fallback trained on about fifty target windows retrieves only slightly better than chance and often repeats a window; larger selections help little without the paper's 300-hour pretraining corpus.
+
 ### Setup and public data
 
 ```bash
