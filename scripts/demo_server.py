@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse
 import json
+import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -11,6 +12,17 @@ from beat_runtime import serve_beat, library as beat_library, query_application
 from speech_backend import SpeechBackend, speech_route
 
 MODE = "ridge"
+PACKAGE = "ridge_gesture"
+SRC = Path(__file__).resolve().parents[1] / "src"
+
+
+def use_repository_package():
+    """Prepared mode runs this repository's ``src`` package, not the copy that
+    ``beat_runtime`` vendors for the no-data stand-in (``scripts/beat_deps``)."""
+    if SRC.is_dir():
+        sys.path.insert(0, str(SRC))
+        for name in [n for n in sys.modules if n == PACKAGE or n.startswith(PACKAGE + ".")]:
+            del sys.modules[name]
 
 
 def serve(a):
@@ -84,32 +96,31 @@ def serve(a):
                            "trace": sequence, "cluster_count": len(groups), "seed": seed, "data_label": a.data_label})
             return result
     else:
-        import torch
         from sentence_transformers import SentenceTransformer
-        from ridge_gesture.model import TextMotionModel
+        from ridge_gesture.cli import fallback_encoder
+        from ridge_gesture.model import load_checkpoint
         from ridge_gesture.pipeline import hybrid_retrieve
         rules = [json.loads(x) for x in Path(a.rules).read_text(encoding="utf-8").splitlines() if x]
-        ck = torch.load(a.checkpoint, map_location="cpu", weights_only=True)
-        model = TextMotionModel(ck["text_dim"], ck["motion_dim"])
-        model.load_state_dict(ck["state"]); model.eval()
-        encoder = SentenceTransformer(a.sbert)
+        model, ck = load_checkpoint(a.checkpoint)
+        encoder = SentenceTransformer(a.sbert or rules[0].get("sbert") or ck.get("sbert", "all-MiniLM-L6-v2"))
         library_npz = np.load(a.data_dir / "train_pairs.npz")
         library = {str(k): v for k, v in zip(library_npz["ids"], library_npz["motion"])}
-        continuous_path = a.data_dir / "speaker_motion.npy"
-        if continuous_path.exists():
-            continuous = np.load(continuous_path)
-            for rule in rules:
-                if rule["gesture_id"] not in library and rule.get("record_id") == "record_0":
-                    start, end = int(rule["start_frame"]), int(rule["end_frame"])
-                    if not 0 <= start < end <= len(continuous):
-                        raise ValueError(f"rule {rule['gesture_id']} is outside prepared motion")
-                    library[rule["gesture_id"]] = continuous[start:end]
+        records_path = a.data_dir / "motion_records.npz"
+        records = np.load(records_path) if records_path.exists() else None
+        for rule in rules:
+            if rule["gesture_id"] in library or records is None:
+                continue
+            record_id = str(rule.get("record_id"))
+            if record_id not in records.files:
+                raise ValueError(f"rule {rule['gesture_id']} refers to motion that is not prepared")
+            continuous = records[record_id]
+            start, end = int(rule["start_frame"]), int(rule["end_frame"])
+            if not 0 <= start < end <= len(continuous):
+                raise ValueError(f"rule {rule['gesture_id']} is outside prepared motion")
+            library[rule["gesture_id"]] = continuous[start:end]
         latent = ck["motion_latents"].cpu().numpy().astype("float32")
         ids = [str(x) for x in ck["ids"]]
-        def fallback(text):
-            with torch.no_grad():
-                z = model.text(torch.from_numpy(encoder.encode([text], normalize_embeddings=True).astype("float32"))).numpy()[0]
-            return z / max(np.linalg.norm(z), 1e-8)
+        fallback = fallback_encoder(model, ck, a.sbert)
         def query(text, params):
             threshold = float(params.get("threshold", ["0.72"])[0])
             sequence = hybrid_retrieve(text, rules, lambda x: encoder.encode(x, normalize_embeddings=True),
@@ -162,7 +173,7 @@ def main():
     p.add_argument("--clusters", type=Path)
     p.add_argument("--checkpoint", type=Path)
     p.add_argument("--glove", type=Path)
-    p.add_argument("--sbert", default="all-MiniLM-L6-v2")
+    p.add_argument("--sbert", help="Sentence-BERT name or directory (default: the one recorded in the rules/checkpoint)")
     p.add_argument("--translations", type=Path)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--data-label", default="User-prepared motion")
@@ -175,6 +186,8 @@ def main():
         p.error("--rules and --clusters are required")
     if not a.example and MODE == "ridge" and (not a.rules or not a.checkpoint):
         p.error("--rules and --checkpoint are required")
+    if not a.example:
+        use_repository_package()
     serve(a)
 
 

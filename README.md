@@ -80,9 +80,13 @@ To replace the demo motion with an existing processed BEAT take, run `python scr
 
 Independent educational reimplementation of *RIDGE: Rule-Infused Deep Learning for Realistic Co-Speech Gesture Generation* (Ali, Kim, and Hwang, Computer Animation and Virtual Worlds 2025, DOI: [10.1002/cav.70034](https://doi.org/10.1002/cav.70034)). RIDGE retrieves recorded clips through a high-confidence phrase rule first and a contrastively learned text-motion space otherwise. It does not decode new animation frames and is not institute source code.
 
-The default browser path is the prepared BEAT demo above. The older `python scripts/demo_server.py --example` path, when the prepared BEAT cache is absent, remains an offline fixture with author-created motion and illustrative vectors. The prepared-data commands below retain the full contrastive training and hybrid retrieval contracts.
+The default browser path is the prepared BEAT demo above. The older `python scripts/demo_server.py --example` path, when the prepared BEAT cache is absent, remains an offline fixture with author-created motion and illustrative vectors. The prepared-data commands below run the paper's pipeline:
+1. LLM phrase extraction with the paper's prompt;
+2. the rule base;
+3. two-stage contrastive training;
+4. hybrid retrieval.
 
-The default strong rules come from three cached semantic annotations with explicit provenance. To run your own OpenAI-compatible extractor against the prepared local bank, supply an endpoint and model, then rebuild the local RIDGE index with those reviewed rules:
+The paper method's rule extraction is `ridge-gesture annotate` (below). The demo's three strong rules come from cached semantic annotations with explicit provenance. To regenerate them for the small demo bank with an OpenAI-compatible extractor, supply an endpoint and model, then rebuild the local index:
 
 ```sh
 python scripts/beat_semantics.py --endpoint http://127.0.0.1:1234/v1 --model MODEL --output outputs/beat-library/strong-rules.json
@@ -113,47 +117,84 @@ Run a CPU verification workflow with procedurally generated inputs:
 python scripts/verify.py
 ```
 
-It generates transcripts, reviewed annotations, 384-D paired embeddings, motion, and a local SentenceTransformer fixture, then invokes the installed `annotate`, `build-rules`, `train`, `retrieve`, and `eval-gca` CLI paths. Both rule and neural fallback retrieval are exercised, with results under `outputs/verification/`. The local encoder replaces only downloadable Sentence-BERT weights; real `all-MiniLM-L6-v2` embeddings use the same checkpoint and index path.
+It generates transcripts, reviewed annotations, 384-D paired embeddings, motion, and a local SentenceTransformer fixture. It then invokes the installed CLI paths:
+- `annotate`, with reviewed JSON and with a local stand-in LLM command;
+- `build-rules`;
+- `train`, as pretraining with `--gesture-init`, then fine-tuning with `--init`;
+- `retrieve`;
+- `eval-gca`.
 
-Request [BEAT](https://pantomatrix.github.io/BEAT/) from its maintainers and prepare its text, timestamps, and upper-body motion under its license. Public videos may augment pretraining only when you have permission to process them. No BEAT recordings, wild videos, original performer annotations, trained weights, proprietary prompts, or reported scores are bundled. The demo includes three cached semantic phrase annotations from the public transcript, with their provenance recorded.
+Both rule and neural fallback retrieval are exercised, with results under `outputs/verification/`. The local encoder replaces only downloadable Sentence-BERT weights; real `all-MiniLM-L6-v2` embeddings use the same checkpoint and index path.
 
-Transcript JSONL rows contain `record_id`, `text`, and `words: [{word,start_frame,end_frame}]`. Motion remains in a user-managed store keyed by the generated `record_id:start-end` gesture ID. Contrastive `pairs.npz` contains normalized `text_embeddings[N,384]`, neck-centered `motion[N,F,D]`, and string `ids[N]`. SBERT embeddings must come from `all-MiniLM-L6-v2` unless you intentionally retrain and rebuild every index.
+Request [BEAT](https://pantomatrix.github.io/BEAT/) from its maintainers and prepare its text, timestamps, and upper-body motion under its license. Public videos may augment pretraining only when you have permission to process them. No BEAT recordings, wild videos, original performer annotations, trained weights or reported scores are bundled. The demo includes three cached semantic phrase annotations from the public transcript, with their provenance recorded.
+
+**Data contracts**
+- Transcript JSONL rows contain `record_id`, `speaker`, `text` and `words: [{word,start_frame,end_frame}]`. They may also contain `textgrid`, the source file sent to the LLM.
+- Gesture IDs are `record_id:start-end`. Motion is looked up from `motion_records.npz`, keyed by `record_id`.
+- Contrastive `pairs.npz` contains:
+  - normalized `text_embeddings[N,384]`;
+  - neck-centered `motion[N,F,D]`;
+  - string `ids[N]`;
+  - optional `texts`, `speakers`, `lengths` and `sbert` (the encoder that produced the embeddings).
+- Rules and checkpoints record their Sentence-BERT, and `retrieve` reuses it. Changing the encoder means rebuilding every index.
 
 ```bash
-ridge-gesture annotate --transcripts data/transcripts.jsonl --output outputs/phrases.jsonl
-# Optional reviewed/LLM file: JSON object mapping record_id to 3-10 word phrase lists
-ridge-gesture annotate --transcripts data/transcripts.jsonl --external-annotations data/reviewed.json --output outputs/phrases.jsonl
-ridge-gesture build-rules --records data/transcripts.jsonl --annotations outputs/phrases.jsonl --output outputs/rules.jsonl
-ridge-gesture train --pairs data/train_pairs.npz --output checkpoints/ridge.pt
-ridge-gesture retrieve --rules outputs/rules.jsonl --checkpoint checkpoints/ridge.pt --threshold 0.72 --text "Explain the next important action" --output outputs/sequence.json
+# Paper rule extraction: the verbatim prompt over each TextGrid, to an OpenAI-compatible endpoint or a local CLI
+ridge-gesture annotate --transcripts data/prepared/transcripts.jsonl --llm-endpoint http://127.0.0.1:1234/v1 --model MODEL --output outputs/phrases.jsonl
+ridge-gesture annotate --textgrid data/beat/1/*.TextGrid --records-output data/records.jsonl --llm-command "ollama run llama3.1" --output outputs/phrases.jsonl
+# Alternatives: reviewed JSON {record_id: [phrases]} or the content-word heuristic (no flags)
+ridge-gesture annotate --transcripts data/prepared/transcripts.jsonl --external-annotations data/reviewed.json --output outputs/phrases.jsonl
+ridge-gesture build-rules --records data/prepared/transcripts.jsonl --annotations outputs/phrases.jsonl --per-speaker --output outputs/rules
+# Stage 1: large (e.g. 2D-to-3D mapped video) corpus; stage 2: BEAT fine-tuning
+ridge-gesture train --pairs data/pretrain/*.npz --preset pretrain --gesture-init checkpoints/gestureclr.pt --output checkpoints/ridge-pretrain.pt
+ridge-gesture train --pairs data/prepared/train_pairs.npz --preset finetune --init checkpoints/ridge-pretrain.pt --per-speaker --output checkpoints/speakers
+ridge-gesture retrieve --rules outputs/rules/1_wayne.rules.jsonl --checkpoint checkpoints/speakers/1_wayne.pt --threshold 0.72 --text "Explain the next important action" --output outputs/sequence.json
 ridge-gesture eval-gca --reference data/gca_reference.npz --candidate data/gca_heldout_predictions.npz
 python -m pytest
 ```
 
-The annotation command uses a transparent heuristic unless reviewed annotations are supplied. The threshold is a validation parameter, not a paper-fixed universal value. Retrieval output labels every segment `rule` or `fallback`; output gesture IDs are the keys a separate renderer uses to load motion.
+**Annotation**
+- `annotate` sends the paper's extraction prompt verbatim, followed by a one-line JSON output instruction and the TextGrid content. When a record has no TextGrid file, the content is rendered from its timed words.
+- Proposed phrases must have 3–10 words and appear contiguously in the transcript. When a phrase is repeated, each repeat is bound to the next occurrence.
+- Each output row records provenance: the prompt hash, model, endpoint or command, the raw reply, and rejected proposals with reasons.
+- An API key, when needed, is read from the variable named by `--api-key-env`.
 
-GCA reference and candidate files both contain `text_embeddings` and `motion_embeddings`. The reference file must contain training/reference speakers only. The candidate file contains held-out predictions; it never participates in fitting text clusters or gesture subclusters.
+**Retrieval** scores every 3–10-word span at every start position against the rule base. It accepts the best-scoring spans above the threshold, so filler is not absorbed. Words between rules go to the learned fallback in chunks of at most six words. The threshold is a validation parameter, not a paper-fixed universal value. Output labels every segment `rule` or `fallback`, with its word span.
+
+**Training** uses in-batch contrastive loss with a configurable temperature `--tau`.
+- The motion branch has the GestureCLR architecture. `--gesture-init` loads its weights from a GestureCLR checkpoint: `{"state": GestureCLR.state_dict(), "d3": D}` from the multilingual or wild-pose `train` commands (`motion3d.*` keys), `{"motion_encoder": state}`, or a bare encoder state dict.
+- `--preset pretrain` uses batch 1000; `--preset finetune` uses batch 64. Both use a validation split, early stopping (`--patience`, `--min-delta`) and an LR schedule (`--schedule plateau|cosine|none`). Epoch caps and learning rates are implementation choices.
+- `--init` continues from a stage-1 checkpoint.
+- `--finetune-text` also trains Sentence-BERT, end to end as in the paper, when pairs include `texts`.
+- `--speaker` or `--per-speaker` trains per-speaker models.
+
+GCA reference and candidate files both contain `text_embeddings` and `motion_embeddings`. Embeddings are L2-normalised before clustering, so the clusters match the cosine scoring. The reference file must contain training/reference speakers only. The candidate file contains held-out predictions; it never participates in fitting text clusters or gesture subclusters.
 
 ### Prepare data and compare retrieval branches in the browser
 
-`scripts/prepare_public_data.py` converts a licensed BVH and timestamped JSONL transcript to 15 FPS neck-centered motion, phrase records and real `all-MiniLM-L6-v2` text embeddings. Use at least six seconds and the script's upper-body joint names. One word per JSONL line or one record containing `words` is accepted; timestamps can use seconds or frame indices. The adapter does not synthesize expert/LLM phrase annotations. Review `annotate` output or supply `--external-annotations` for meaningful rules.
+`scripts/prepare_public_data.py` converts licensed BVH takes to 15 FPS neck-centered XYZ motion, phrase records and Sentence-BERT text embeddings. Transcripts can be timestamped JSONL or BEAT TextGrids.
+- Pass several `--bvh`/`--transcript` pairs, or a `--manifest` JSON list of `{bvh, transcript, speaker, record_id}`.
+- Record IDs default to the take name. Speakers are parsed from BEAT names (`1_wayne_0_1_1` → `1_wayne`) unless `--speaker` is given.
+- Windows without speech are skipped.
+- `--sbert` names the encoder. `all-MiniLM-L6-v2` (the default) is downloaded by sentence-transformers on first use; pass a local directory to work offline.
+- Use at least six seconds per take and the script's upper-body joint names. JSONL accepts one word per line or one record containing `words`; timestamps can use seconds or frame indices.
 
 ```bash
-python scripts/prepare_public_data.py --bvh data/licensed_motion.bvh --transcript data/words.jsonl --output-dir data/prepared
-ridge-gesture annotate --transcripts data/prepared/transcripts.jsonl --output outputs/phrases.jsonl
-ridge-gesture build-rules --records data/prepared/transcripts.jsonl --annotations outputs/phrases.jsonl --output outputs/rules.jsonl
-ridge-gesture train --pairs data/prepared/train_pairs.npz --epochs 20 --output checkpoints/ridge.pt
+python scripts/prepare_public_data.py --bvh data/beat/1/1_wayne_0_1_1.bvh data/beat/1/1_wayne_0_2_2.bvh --transcript data/beat/1/1_wayne_0_1_1.TextGrid data/beat/1/1_wayne_0_2_2.TextGrid --sbert models/all-MiniLM-L6-v2 --output-dir data/prepared
+ridge-gesture annotate --transcripts data/prepared/transcripts.jsonl --llm-endpoint http://127.0.0.1:1234/v1 --model MODEL --output outputs/phrases.jsonl
+ridge-gesture build-rules --records data/prepared/transcripts.jsonl --annotations outputs/phrases.jsonl --sbert models/all-MiniLM-L6-v2 --output outputs/rules.jsonl
+ridge-gesture train --pairs data/prepared/train_pairs.npz --preset finetune --output checkpoints/ridge.pt
 python scripts/prepare_viewer.py --out static/vendor
 python scripts/demo_server.py --data-dir data/prepared --rules outputs/rules.jsonl --checkpoint checkpoints/ridge.pt
 ```
 
-The threshold slider changes the rule gate live. The trace labels each selected clip as `rule` or `fallback`, shows similarity and plays its actual motion frames. Use speaker-separated reference and candidate files with `ridge-gesture eval-gca` for the GCA diagnostic; the local demo does not assert the paper's reported score. The compact checkpoint freezes Sentence-BERT and trains a text projection and temporal motion encoder. `scripts/verify.py` uses random arrays plus a local illustrative text encoder solely to exercise interfaces.
+The threshold slider changes the rule gate live. The trace labels each selected clip as `rule` or `fallback`, shows similarity and plays its actual motion frames. Prepared mode imports this repository's `src/` package, not the vendored stand-in copy. Use speaker-separated reference and candidate files with `ridge-gesture eval-gca` for the GCA diagnostic; the local demo does not assert the paper's reported score. By default Sentence-BERT stays frozen and only the projection and motion encoder train; `--finetune-text` trains it too. `scripts/verify.py` uses random arrays plus a local illustrative text encoder solely to exercise interfaces.
 
 [Automatic text-to-gesture](https://github.com/ghazanPK/automatic-text-to-gesture) is the rule-mining precursor; [wild pose matching](https://github.com/ghazanPK/wild-pose-matching) and [multilingual gesture synthesis](https://github.com/ghazanPK/multilingual-gesture) develop the GestureCLR lineage. These are research references, not package dependencies.
 
 ### Limits and licenses
 
-This implementation freezes Sentence-BERT and trains its projection, while the paper describes end-to-end training; see `REQUIREMENTS.md`. Heuristic phrases are not equivalent to expert or LLM annotation. GCA measures affinity to a fitted cluster structure and still needs perceptual validation. Source motion quality, including finger artifacts, carries into retrieved clips. Code is MIT licensed; BEAT, pretrained encoders, videos, and annotations keep separate terms.
+Sentence-BERT is frozen unless `--finetune-text` is given; the paper trains both encoders end to end. The 2D-to-3D mapping that produced the paper's 300-hour pretraining corpus is not included: stage 1 takes whatever pairs you supply. Heuristic phrases are not equivalent to expert or LLM annotation, and LLM output depends on the model you choose. GCA measures affinity to a fitted cluster structure and still needs perceptual validation. Source motion quality, including finger artifacts, carries into retrieved clips. Code is MIT licensed; BEAT, pretrained encoders, videos, and annotations keep separate terms.
 
 ### Citation
 

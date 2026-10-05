@@ -1,7 +1,10 @@
-"""Convert a licensed BVH and word-aligned transcript to RIDGE contracts.
+"""Convert licensed BVH takes and word-aligned transcripts to RIDGE contracts.
 
-The camera is an explicit orthographic XY projection. It is a reproducible
-substitute for video-estimated 2D pose, not a claim to reproduce the paper data.
+Motion is kept as neck-centred 3D (XYZ) joint positions at 15 FPS; no 2D
+projection is involved. Each take becomes one transcript record with a unique
+``record_id`` and a ``speaker`` field, so rules and models can be built per
+speaker. Text embeddings use the Sentence-BERT given by ``--sbert`` (a model
+name that sentence-transformers downloads on first use, or a local directory).
 """
 from __future__ import annotations
 
@@ -110,36 +113,77 @@ def timed_words(path: Path, fps: int, frames: int) -> list[dict]:
     return result
 
 
+def take_words(path: Path, fps: int, frames: int) -> list[dict]:
+    """Timed words from JSONL (seconds or frames) or a BEAT TextGrid."""
+    if path.suffix.lower() == ".textgrid":
+        from ridge_gesture.annotate import frame_words, read_textgrid
+        return frame_words(read_textgrid(path), fps, frames)
+    return timed_words(path, fps, frames)
+
+
+def take_list(args) -> list[dict]:
+    if args.manifest:
+        items = json.loads(args.manifest.read_text(encoding="utf-8"))
+        base = args.manifest.parent
+        return [{"bvh": base / item["bvh"] if not Path(item["bvh"]).is_absolute() else Path(item["bvh"]),
+                 "transcript": base / item["transcript"] if not Path(item["transcript"]).is_absolute() else Path(item["transcript"]),
+                 "record_id": item.get("record_id"), "speaker": item.get("speaker")} for item in items]
+    if not args.bvh or len(args.bvh) != len(args.transcript or []):
+        raise ValueError("give matching --bvh and --transcript lists, or --manifest")
+    return [{"bvh": b, "transcript": t, "record_id": None, "speaker": args.speaker} for b, t in zip(args.bvh, args.transcript)]
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--bvh", type=Path, required=True)
-    p.add_argument("--transcript", type=Path, required=True)
+    p.add_argument("--bvh", type=Path, nargs="+")
+    p.add_argument("--transcript", type=Path, nargs="+", help="JSONL words or BEAT TextGrid, one per --bvh")
+    p.add_argument("--manifest", type=Path, help="JSON list of {bvh, transcript, speaker?, record_id?}")
+    p.add_argument("--speaker", help="speaker for every --bvh take (default: parsed from BEAT names)")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--fps", type=int, default=15)
     p.add_argument("--unit-seconds", type=float, default=3)
+    p.add_argument("--sbert", default="all-MiniLM-L6-v2",
+                   help="Sentence-BERT name (downloaded by sentence-transformers on first use) or a local directory")
     args = p.parse_args()
     if args.fps <= 0 or args.unit_seconds <= 0:
         raise ValueError("fps and unit-seconds must be positive")
-    motion = load_bvh(args.bvh, args.fps)
-    words = timed_words(args.transcript, args.fps, len(motion))
+    from ridge_gesture.annotate import beat_speaker
     length = round(args.fps * args.unit_seconds)
-    if len(motion) < length:
-        raise ValueError("BVH is shorter than one gesture unit")
+    records, clips, texts, ids, speakers, motions, skipped = [], [], [], [], [], {}, 0
+    for take in take_list(args):
+        record_id = take["record_id"] or take["bvh"].stem
+        speaker = take["speaker"] if take["speaker"] is not None else beat_speaker(record_id)
+        if record_id in motions:
+            raise ValueError(f"duplicate record_id {record_id!r}")
+        motion = load_bvh(take["bvh"], args.fps)
+        words = take_words(take["transcript"], args.fps, len(motion))
+        flat = motion.reshape(len(motion), -1)
+        motions[record_id] = flat
+        record = {"record_id": record_id, "speaker": speaker, "text": " ".join(w["word"] for w in words),
+                  "words": words, "fps": args.fps}
+        if take["transcript"].suffix.lower() == ".textgrid":
+            record["textgrid"] = str(take["transcript"].resolve())
+        records.append(record)
+        for start in range(0, len(motion) - length + 1, length):
+            text = " ".join(w["word"] for w in words if w["end_frame"] > start and w["start_frame"] < start + length)
+            if not text:
+                skipped += 1  # silent window: no speech to pair with
+                continue
+            clips.append(flat[start:start + length]); texts.append(text)
+            ids.append(f"{record_id}:{start}-{start + length}"); speakers.append(speaker)
+    if len(clips) < 2:
+        raise ValueError("RIDGE training needs at least two motion windows with overlapping transcript words")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     from sentence_transformers import SentenceTransformer
-    starts = list(range(0, len(motion) - length + 1, length))
-    clips = np.stack([motion[start:start + length].reshape(length, -1) for start in starts])
-    texts = [" ".join(w["word"] for w in words if w["end_frame"] > start and w["start_frame"] < start + length) for start in starts]
-    if any(not t for t in texts) or len(texts) < 2:
-        raise ValueError("RIDGE training needs at least two motion units with overlapping transcript words")
-    ids = np.asarray([f"record_0:{start}-{start + length}" for start in starts])
-    embeddings = SentenceTransformer("all-MiniLM-L6-v2").encode(texts, normalize_embeddings=True)
-    np.savez(args.output_dir / "train_pairs.npz", text_embeddings=embeddings.astype(np.float32), motion=clips, ids=ids)
-    np.save(args.output_dir / "speaker_motion.npy", motion.reshape(len(motion), -1))
-    record = {"record_id": "record_0", "text": " ".join(w["word"] for w in words), "words": words}
-    (args.output_dir / "transcripts.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
-    (args.output_dir / "joint_order.json").write_text(json.dumps({"joints": JOINTS, "fps": args.fps, "projection": "orthographic XY; neck centered"}, indent=2), encoding="utf-8")
-    print(json.dumps({"frames": len(motion), "units": len(clips), "words": len(words)}))
+    embeddings = SentenceTransformer(args.sbert).encode(texts, normalize_embeddings=True)
+    np.savez(args.output_dir / "train_pairs.npz", text_embeddings=embeddings.astype(np.float32), motion=np.stack(clips),
+             ids=np.asarray(ids), texts=np.asarray(texts), speakers=np.asarray(speakers),
+             lengths=np.full(len(clips), length), sbert=np.asarray(args.sbert))
+    np.savez(args.output_dir / "motion_records.npz", **motions)
+    (args.output_dir / "transcripts.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    (args.output_dir / "joint_order.json").write_text(json.dumps({"joints": JOINTS, "fps": args.fps, "coordinates": "XYZ; neck centered", "sbert": args.sbert}, indent=2), encoding="utf-8")
+    print(json.dumps({"records": len(records), "speakers": sorted(set(speakers)), "pairs": len(clips),
+                      "silent_windows_skipped": skipped, "sbert": args.sbert}))
 
 
 if __name__ == "__main__":

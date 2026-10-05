@@ -67,8 +67,19 @@ def main() -> None:
     (out / "reviewed.json").write_text(json.dumps({"record_0": [texts[0]]}), encoding="utf-8")
     make_text_encoder(out / "tiny-sbert", texts + ["open both hands now then discuss another topic"])
     run_cli("annotate", "--transcripts", out / "transcripts.jsonl", "--external-annotations", out / "reviewed.json", "--output", out / "cli-phrases.jsonl")
+    # The paper's LLM extraction path, with a local command standing in for the hosted model.
+    stub = out / "llm_stub.py"
+    stub.write_text("import json, sys\nprompt = sys.stdin.read()\nassert 'Extract Key Gesture-Aligned Phrases' in prompt\n"
+                    "print(json.dumps({'phrases': ['open both hands now']}))\n", encoding="utf-8")
+    run_cli("annotate", "--transcripts", out / "transcripts.jsonl", "--llm-command", f'"{sys.executable}" "{stub}"', "--output", out / "cli-llm-phrases.jsonl")
+    llm_rows = [json.loads(x) for x in (out / "cli-llm-phrases.jsonl").read_text(encoding="utf-8").splitlines()]
+    if not llm_rows[0]["phrases"] or llm_rows[0]["provenance"]["annotator"] != "llm": raise RuntimeError("LLM annotation produced no validated phrase")
     run_cli("build-rules", "--records", out / "transcripts.jsonl", "--annotations", out / "cli-phrases.jsonl", "--sbert", out / "tiny-sbert", "--output", out / "cli-rules.jsonl")
-    run_cli("train", "--pairs", out / "train_pairs.npz", "--output", out / "cli-ridge.pt", "--epochs", 1, "--batch-size", 6, "--seed", 19)
+    # GestureCLR-format checkpoint (motion3d.* keys) for --gesture-init, then pretrain -> fine-tune.
+    from ridge_gesture.model import GestureEncoder
+    torch.save({"state": {f"motion3d.{k}": v for k, v in GestureEncoder(18).state_dict().items()}, "d3": 18}, out / "gestureclr.pt")
+    run_cli("train", "--pairs", out / "train_pairs.npz", "--preset", "pretrain", "--gesture-init", out / "gestureclr.pt", "--output", out / "cli-ridge-pretrain.pt", "--epochs", 1, "--seed", 19)
+    run_cli("train", "--pairs", out / "train_pairs.npz", "--init", out / "cli-ridge-pretrain.pt", "--output", out / "cli-ridge.pt", "--epochs", 1, "--batch-size", 6, "--seed", 19)
     run_cli("retrieve", "--rules", out / "cli-rules.jsonl", "--checkpoint", out / "cli-ridge.pt", "--sbert", out / "tiny-sbert", "--threshold", 0.99, "--text", "open both hands now then discuss another topic", "--output", out / "cli-sequence.json")
     np.savez(out / "gca-reference.npz", text_embeddings=zt.numpy()[:4], motion_embeddings=motion_latents[:4])
     np.savez(out / "gca-candidate.npz", text_embeddings=zt.numpy()[4:], motion_embeddings=motion_latents[4:])

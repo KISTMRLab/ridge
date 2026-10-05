@@ -10,14 +10,24 @@
 
 ## Reimplementation decisions
 
-- The full CLI can use a deterministic content-word heuristic or supplied annotation JSON. The small browser demo resolves three cached, provenance-marked LLM annotations; a separate explicit endpoint command can regenerate strong rules. No hosted key is embedded.
-- Sentence-BERT embeddings are frozen during compact training; its 384D outputs feed a trainable MLP. This differs from full end-to-end fine-tuning and is explicit in checkpoint metadata.
-- The motion encoder is a compact temporal Transformer with sinusoidal frame positions rather than unpublished institute code.
-- GCA always fits on a reference/training file and scores a separate candidate/held-out file. Evaluation samples never alter centroids.
+- `ridge-gesture annotate` sends the paper's extraction prompt verbatim over each TextGrid to an OpenAI-compatible endpoint or a local LLM command, followed by a one-line JSON output instruction.
+  - Proposals are validated as contiguous 3–10-word spans, and repeated phrases bind to successive occurrences. Provenance and rejections are recorded.
+  - Reviewed JSON and a content-word heuristic remain as alternatives. No hosted key is embedded.
+  - The small browser demo still resolves three cached, provenance-marked LLM annotations.
+- Datasets carry unique `record_id`s and a `speaker` field. Rules and models can be built per speaker.
+- Sentence-BERT is frozen by default and feeds a trainable feed-forward projection; `--finetune-text` fine-tunes it end to end. The checkpoint stores the Sentence-BERT id or path and whether it was frozen (`text_encoder`). `retrieve` reuses that encoder.
+- The motion encoder has the GestureCLR architecture and can be initialised from a GestureCLR checkpoint (`--gesture-init`). It is an independent implementation, not unpublished institute code.
+- Two-stage training:
+  - presets: pretrain batch 1000, fine-tune batch 64;
+  - a validation split, early stopping and an LR schedule;
+  - `--init` to continue from stage 1.
+  Epoch caps and learning rates are implementation choices. The paper's 2D-to-3D video mapping corpus is not reproduced.
+- Hybrid retrieval scores spans at every start and accepts the best-scoring non-overlapping spans above the threshold. Fallback chunks of at most six words stop at the next rule.
+- GCA L2-normalises embeddings before Bisecting K-Means so the clustering matches cosine scoring. It always fits on a reference/training file and scores a separate candidate/held-out file. Evaluation samples never alter centroids.
 
 ## Acceptance criteria
 
-Commands cover annotation, rule construction, contrastive training, hybrid retrieval, and leakage-resistant GCA. Outputs identify whether each result came from `rule` or `fallback`. No direct latent-to-motion decoder is included because the paper describes retrieval and leaves decoding to future work.
+Commands cover LLM, reviewed or heuristic annotation; rule construction; two-stage contrastive training; hybrid retrieval; and leakage-resistant GCA. Outputs identify whether each result came from `rule` or `fallback`. No direct latent-to-motion decoder is included because the paper describes retrieval and leaves decoding to future work.
 
 ## Interactive data handoff
 
