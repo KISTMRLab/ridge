@@ -254,7 +254,7 @@ The threshold slider changes the rule gate live. The trace labels each selected 
 
 ### Limits and licenses
 
-Sentence-BERT is frozen unless `--finetune-text` is given; the paper trains both encoders end to end. The 2D-to-3D mapping that produced the paper's 300-hour pretraining corpus is not included: stage 1 takes whatever pairs you supply. Heuristic phrases are not equivalent to expert or LLM annotation, and LLM output depends on the model you choose. GCA measures affinity to a fitted cluster structure and still needs perceptual validation. Source motion quality, including finger artifacts, carries into retrieved clips. Code is MIT licensed; BEAT, pretrained encoders, videos, and annotations keep separate terms.
+Sentence-BERT is frozen unless `--finetune-text` is given; the paper trains both encoders end to end. The 2D-to-3D mapping that produced the paper's 300-hour pretraining corpus is not included: stage 1 takes whatever pairs you supply. Heuristic phrases are not equivalent to expert or LLM annotation, and LLM output depends on the model you choose. GCA measures affinity to a fitted cluster structure and still needs perceptual validation. Source motion quality, including finger artifacts, carries into retrieved clips. Code is MIT licensed ([LICENSE](LICENSE)); BEAT, pretrained encoders, videos, and annotations keep separate terms.
 
 ### Citation
 
