@@ -75,7 +75,7 @@ def make_server(a):
         library_npz = np.load(a.data_dir / "units.npz")
         library = {str(k): v for k, v in zip(library_npz["ids"], library_npz["motion3d"])}
         groups = {int(k): [str(x) for x in d["ids"][d["labels"] == k]] for k in np.unique(d["labels"])}
-        encoder = SentenceTransformer(a.sbert or "all-MiniLM-L6-v2")
+        encoder = SentenceTransformer(pm.find_sbert(a.sbert)[0] or "all-MiniLM-L6-v2")
         def query(text, params):
             seed = int(params.get("seed", [str(a.seed)])[0])
             sequence = retrieve(text, rules, lambda x: encoder.encode(x, normalize_embeddings=True), groups, seed)
@@ -91,7 +91,7 @@ def make_server(a):
         library_npz = np.load(a.data_dir / "units.npz")
         library = {str(k): v for k, v in zip(library_npz["ids"], library_npz["motion3d"])}
         groups = {int(k): [str(x) for x in d["ids"][d["labels"] == k]] for k in np.unique(d["labels"])}
-        encoder = SentenceTransformer(a.sbert or "all-MiniLM-L6-v2")
+        encoder = SentenceTransformer(pm.find_sbert(a.sbert)[0] or "all-MiniLM-L6-v2")
         translations = json.loads(Path(a.translations).read_text(encoding="utf-8")) if a.translations else {}
         def query(text, params):
             language = params.get("language", ["en"])[0]
